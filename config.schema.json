@@ -1,17 +1,57 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "SavantHost",
   "pluginType": "platform",
   "singular": true,
-  "strictValidation": false,
+  "headerDisplay": "Homebridge plugin for Savant",
+  "footerDisplay": "Created by @rickyangkai",
   "schema": {
-    "type": "object",
-    "properties": {
-      "name": {
-        "title": "Name",
-        "type": "string",
-        "required": true,
-        "default": "Example Dynamic Platform"
+      "type": "object",
+      "properties": {
+          "hubs": {
+              "type": "array",
+              "title": "Savant智能主机插件",
+              "description": "请填写主机IP地址、类型、端口、用户名、密码",
+              "items": {
+                  "type": "object",
+                  "properties": {
+                      "hostType": {
+                          "title": "Savant主机类型",
+                          "type": "string",
+                          "required": true,
+                          "enum": ["linux", "macos"]
+                      },
+                      "ip": {
+                          "title": "主机IP地址",
+                          "type": "string",
+                          "required": true
+                      },
+                      "port": {
+                          "title": "主机端口",
+                          "type": "integer",
+                          "default": 22
+                      },
+                      "username": {
+                          "title": "主机用户名",
+                          "type": "string",
+                          "required": true
+                      },
+                      "password": {
+                          "title": "主机密码",
+                          "type": "string",
+                          "required": true
+                      }
+                  },
+                  "required": ["ip", "hostType", "username", "password"]
+              }
+          },
+          "statePollingInterval": {
+              "title": "主机状态轮询间隔",
+              "description": "主机状态轮询间隔时间",
+              "default": 300,
+              "type": "integer",
+              "minimum": 60,
+              "maximum": 3600
+          }
       }
-    }
   }
 }

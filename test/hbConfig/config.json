@@ -1,31 +1,41 @@
 {
-  "bridge": {
-    "name": "PluginTemplate",
-    "username": "AA:BB:CC:DD:EE:FF",
-    "port": 51826,
-    "pin": "031-45-154"
-  },
-  "description": "HomeBridge HTTP Status Control",
-  "plugins": [
-    "homebridge-plugin-name",
-    "homebridge-config-ui-x"
-  ],
-  "platforms": [
-    {
-      "name": "Config",
-      "port": 8581,
-      "auth": "none",
-      "theme": "auto",
-      "tempUnits": "c",
-      "lang": "auto",
-      "sudo": false,
-      "platform": "config",
-      "debug": false
+    "bridge": {
+        "name": "Homebridge",
+        "username": "0E:89:49:0A:76:AB",
+        "port": 51826,
+        "pin": "031-45-154"
     },
-    {
-      "name": "homebridge-plugin-name",
-      "platform": "ExampleHomebridgePlugin"
-    }
-  ],
-  "accessories": []
+    "description": "HomeBridge HTTP Status Control",
+    "plugins": [
+        "homebridge-savanthost",
+        "homebridge-config-ui-x"
+    ],
+    "platforms": [
+        {
+            "name": "Config",
+            "port": 8581,
+            "auth": "none",
+            "theme": "orange",
+            "tempUnits": "c",
+            "lang": "zh-CN",
+            "sudo": false,
+            "platform": "config",
+            "debug": true
+        },
+        {
+            "name": "SavantHost",
+            "platform": "SavantHost",
+            "hubs": [
+                {
+                    "hostType": "linux",
+                    "ip": "192.168.31.55",
+                    "port": 22,
+                    "username": "RPM",
+                    "password": "RPM",
+                    "statePollingInterval": 10
+                }
+            ]
+        }
+    ],
+    "accessories": []
 }

@@ -124,3 +124,22 @@ dist
 .idea
 
 /test/hbConfig
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Test configuration
+test/hbConfig/accessories/
+test/hbConfig/persist/

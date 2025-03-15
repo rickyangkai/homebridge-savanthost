@@ -1,22 +1,26 @@
 {
-  "name": "homebridge-plugin-name",
-  "displayName": "Plugin Name",
+  "name": "homebridge-savanthost",
+  "displayName": "Savant智能主机插件",
   "type": "module",
-  "version": "1.0.0",
-  "private": true,
-  "description": "A short description about what your plugin does.",
-  "author": "Your Name",
+  "version": "1.2.1",
+  "private": false,
+  "description": "Savant智能主机插件",
+  "author": "rickyangkai",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/USERNAME/GITHUB_PROJECT_NAME#readme",
+  "homepage": "https://github.com/rickyangkai/homebridge-savanthost#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/USERNAME/GITHUB_PROJECT_NAME.git"
+    "url": "https://github.com/rickyangkai/homebridge-savanthost.git"
   },
   "bugs": {
-    "url": "https://github.com/USERNAME/GITHUB_PROJECT_NAME/issues"
+    "url": "https://github.com/rickyangkai/homebridge-savanthost/issues"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "homebridge-savanthost",
+    "savant",
+    "Savant智能主机",
+    "SavantHost"
   ],
   "main": "dist/index.js",
   "engines": {
@@ -30,7 +34,9 @@
     "watch": "npm run build && npm link && nodemon"
   },
   "dependencies": {
-    "homebridge-lib": "^7.1.4"
+    "@types/ssh2": "^1.15.4",
+    "homebridge-lib": "^7.1.4",
+    "ssh2": "^1.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
