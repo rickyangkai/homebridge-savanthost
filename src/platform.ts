@@ -3,8 +3,6 @@ import { Client } from 'ssh2';
 import { SavantHostPlatformAccessory } from './platformAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 
-import { EveHomeKitTypes } from 'homebridge-lib/EveHomeKitTypes';
-
 interface SceneInfo {
   sceneName: string;
   sceneId: string;
@@ -20,6 +18,14 @@ interface HubConfig {
   statePollingInterval: number;
 }
 
+// 声明 EveHomeKitTypes 类型
+type CustomServiceType = {
+  [key: string]: typeof Service;
+};
+
+type CustomCharacteristicType = {
+  [key: string]: typeof Characteristic;
+};
 
 export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
@@ -29,11 +35,9 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   public readonly accessories: Map<string, PlatformAccessory> = new Map();
   private discoveredCacheUUIDs: string[] = [];
 
-  // This is only required when using Custom Services and Characteristics not support by HomeKit
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly CustomServices: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly CustomCharacteristics: any;
+  // 修改类型定义
+  private CustomServices: CustomServiceType = {};
+  private CustomCharacteristics: CustomCharacteristicType = {};
 
   private readonly scenes: Map<string, SceneInfo> = new Map();
   private sshClient: Client | null = null;
@@ -49,9 +53,26 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
 
-    // This is only required when using Custom Services and Characteristics not support by HomeKit
-    this.CustomServices = new EveHomeKitTypes(this.api).Services;
-    this.CustomCharacteristics = new EveHomeKitTypes(this.api).Characteristics;
+    // 初始化为空对象，确保不会出现 undefined
+    this.CustomServices = {};
+    this.CustomCharacteristics = {};
+
+    // 使用异步 IIFE 来处理动态导入
+    (async () => {
+      try {
+        const module = await import('homebridge-lib/EveHomeKitTypes');
+        if (module && module.EveHomeKitTypes) {
+          const eve = new module.EveHomeKitTypes(this.api);
+          this.CustomServices = eve.Services as CustomServiceType;
+          this.CustomCharacteristics = eve.Characteristics as CustomCharacteristicType;
+          this.log.debug('成功加载 EveHomeKitTypes');
+        } else {
+          this.log.warn('EveHomeKitTypes 模块不可用');
+        }
+      } catch (error) {
+        this.log.error('加载 EveHomeKitTypes 失败:', error);
+      }
+    })();
 
     this.log.debug('初始化平台:', this.config.name);
 

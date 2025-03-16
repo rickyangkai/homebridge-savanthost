@@ -1,8 +1,8 @@
 {
   "name": "homebridge-savanthost",
   "displayName": "Homebridge SavantHost",
-  "version": "1.2.2",
-  "description": "A Homebridge plugin for Savant Host scene control",
+  "version": "1.2.3",
+  "description": "Savant主机场景控制插件",
   "license": "MIT",
   "keywords": [
     "homebridge-plugin",
@@ -43,7 +43,7 @@
     "typescript": "^4.4.4"
   },
   "dependencies": {
-    "homebridge-lib": "^6.7.5",
+    "homebridge-lib": "^7.0.0",
     "ssh2": "^1.15.0"
   }
 }
