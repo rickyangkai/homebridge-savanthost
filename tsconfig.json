@@ -20,6 +20,7 @@
     ".eslintrc.js",
     "eslint.config.js",
     "homebridge-ui",
-    "src"
+    "src",
+    "src/types/**/*.d.ts"
   ]
 }
