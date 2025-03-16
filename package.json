@@ -5,6 +5,7 @@
   "description": "Savant主机场景控制插件",
   "license": "MIT",
   "keywords": [
+    "homebridge-plugin",
     "savant",
     "savantsmarthome",
     "scene",

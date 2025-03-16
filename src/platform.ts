@@ -180,6 +180,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
           ]
           : [
             'export PATH="/usr/local/bin:$PATH"',
+            'export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"',
             'cd /usr/local/bin',
           ];
 
