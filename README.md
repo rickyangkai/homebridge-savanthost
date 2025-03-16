@@ -1,7 +1,7 @@
 # Homebridge Savant Host Plugin
 
 这是一个用于 Homebridge 的插件，可以将 Savant Host 的场景集成到 HomeKit 中。
-由Savant中国区开发，禁止商用，仅用于测试。
+由Savant中国区开发，禁止商用，仅用于测试，不承担测试的任何结果。
 ## 功能特点
 
 - 通过 SSH 连接到 Savant Host
@@ -9,7 +9,8 @@
 - 支持场景激活
 - 自动重连机制
 - 可配置的状态轮询间隔
-- 目前未解决问题。SmartHost长时间使用SSH连接服务，会导致主机22端口禁用。
+- 场景名称建议不含打开或者关闭字符，Sir会识别出错，
+- 此插件在Docker中已经测试工作正常，M芯片的MAC正常，未在linux系统中长时间测试。
 ## 安装
 
 ```bash
