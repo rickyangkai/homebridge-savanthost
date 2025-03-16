@@ -17,6 +17,7 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
+    ".eslintrc.js",
     "eslint.config.js",
     "homebridge-ui",
     "src"
