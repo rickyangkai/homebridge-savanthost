@@ -3,7 +3,7 @@ import { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 import { SavantHostHomebridgePlatform } from './platform.js';
 
 export class SavantHostPlatformAccessory {
-  private service: Service;
+  private switchService: Service;
 
   constructor(
     private readonly platform: SavantHostHomebridgePlatform,
@@ -16,42 +16,27 @@ export class SavantHostPlatformAccessory {
       .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.scene.sceneId);
 
     // 获取或创建开关服务
-    this.service = this.accessory.getService(this.platform.Service.Switch) ||
+    this.switchService = this.accessory.getService(this.platform.Service.Switch) ||
       this.accessory.addService(this.platform.Service.Switch, accessory.context.scene.sceneName);
 
     // 设置开关名称
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.scene.sceneName);
+    this.switchService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.scene.sceneName);
 
     // 注册开关状态处理器
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this))
-      .onGet(this.getOn.bind(this));
+    this.switchService.getCharacteristic(this.platform.Characteristic.On)
+      .onSet(async (value) => {
+        if (value) {
+          const scene = this.accessory.context.scene;
+          this.platform.log.debug('激活场景:', scene.sceneName);
+          await this.platform.activateScene(scene.sceneName, scene.sceneId, scene.sceneUser);
+          // 延迟100ms后自动关闭开关
+          setTimeout(() => {
+            this.switchService.updateCharacteristic(this.platform.Characteristic.On, false);
+          }, 100);
+        }
+      });
 
     this.platform.log.debug('创建场景开关:', accessory.context.scene.sceneName);
-  }
-
-  /**
-   * 处理来自 HomeKit 的 "SET" 请求
-   * 当用户改变配件状态时会触发这个请求，例如打开开关
-   */
-  async setOn(value: CharacteristicValue) {
-    // 只在开关打开时触发场景
-    if (value) {
-      this.platform.log.debug('触发场景:', this.accessory.context.scene.sceneName);
-      
-      try {
-        // 激活场景
-        this.platform.activateScene(this.accessory.context.scene);
-        
-        // 延迟 1 秒后自动关闭开关
-        setTimeout(() => {
-          this.service.updateCharacteristic(this.platform.Characteristic.On, false);
-        }, 1000);
-      } catch (error) {
-        this.platform.log.error('激活场景时出错:', error);
-        throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-      }
-    }
   }
 
   /**
