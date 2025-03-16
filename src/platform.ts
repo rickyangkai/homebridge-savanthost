@@ -41,8 +41,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
 
   private readonly scenes: Map<string, SceneInfo> = new Map();
   private sshClient: Client | null = null;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private isConnected = false;  // 添加连接状态标志
+  private pollTimer: NodeJS.Timeout | null = null;
   private hubConfig: HubConfig | null = null;
 
   constructor(
@@ -78,52 +77,22 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
 
     this.api.on('didFinishLaunching', () => {
       this.log.debug('执行 didFinishLaunching 回调');
-      this.connectToHub();
+      this.startPolling();
     });
   }
 
-  private async connectToHub() {
-    if (!this.config.hubs?.[0]) {
-      this.log.error('未找到有效的主机配置');
-      return;
-    }
-
-    this.hubConfig = this.config.hubs[0] as HubConfig;
-    
-    // 确保设置了轮询间隔，如果未设置则使用默认值
-    if (!this.hubConfig.statePollingInterval) {
-      this.hubConfig.statePollingInterval = this.config.statePollingInterval || 300;
-      this.log.info(`使用轮询间隔: ${this.hubConfig.statePollingInterval} 秒`);
-    }
-    
-    try {
-      await this.establishSSHConnection();
-      this.startPolling();
-    } catch (error) {
-      this.log.error('连接到主机失败:', error);
-      this.scheduleReconnect();
-    }
-  }
-
-  private establishSSHConnection(): Promise<void> {
+  private async createSSHConnection(): Promise<Client> {
     return new Promise((resolve, reject) => {
-      this.sshClient = new Client();
+      const client = new Client();
       
-      this.sshClient
+      client
         .on('ready', () => {
           this.log.info('SSH 连接已建立');
-          this.isConnected = true;  // 设置连接状态
-          resolve();
+          resolve(client);
         })
         .on('error', (err) => {
           this.log.error('SSH 连接错误:', err);
-          this.isConnected = false;  // 更新连接状态
           reject(err);
-        })
-        .on('close', () => {
-          this.log.warn('SSH 连接已关闭');
-          this.isConnected = false;  // 更新连接状态
-          this.scheduleReconnect();
         })
         .connect({
           host: this.hubConfig!.ip,
@@ -134,8 +103,6 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
             serverHostKey: ['ssh-rsa', 'ecdsa-sha2-nistp256', 'ssh-ed25519'],
           },
           hostVerifier: () => true,
-          keepaliveInterval: 30000,       // 30秒发送一次保活包
-          keepaliveCountMax: 5,           // 最多尝试5次保活
           readyTimeout: 30000,            // 连接超时时间30秒
           debug: (message: string) => {
             this.log.debug('SSH Debug:', message);
@@ -144,44 +111,49 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     });
   }
 
-  private scheduleReconnect() {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-    }
-
-    this.reconnectTimer = setTimeout(() => {
-      this.connectToHub();
-    }, this.hubConfig!.statePollingInterval * 1000);
+  private async closeSSHConnection(client: Client): Promise<void> {
+    return new Promise((resolve) => {
+      client.on('close', () => {
+        this.log.debug('SSH 连接已关闭');
+        resolve();
+      });
+      client.end();
+    });
   }
 
   private startPolling() {
-    // 验证轮询间隔
-    const interval = this.hubConfig!.statePollingInterval || 300;
-    if (interval < 60 || interval > 3600) {
-      this.log.warn(`轮询间隔 ${interval} 超出范围，将使用默认值 300 秒`);
-      this.hubConfig!.statePollingInterval = 300;
+    if (!this.config.hubs?.[0]) {
+      this.log.error('未找到有效的主机配置');
+      return;
     }
 
-    this.log.info(`开始场景轮询，间隔时间: ${this.hubConfig!.statePollingInterval} 秒`);
+    this.hubConfig = this.config.hubs[0] as HubConfig;
+    
+    // 确保设置了轮询间隔，如果未设置则使用默认值
+    if (!this.hubConfig.statePollingInterval) {
+      this.hubConfig.statePollingInterval = this.config.statePollingInterval || 300;
+    }
+
+    // 验证轮询间隔
+    if (this.hubConfig.statePollingInterval < 60 || this.hubConfig.statePollingInterval > 3600) {
+      this.log.warn(`轮询间隔 ${this.hubConfig.statePollingInterval} 超出范围，将使用默认值 300 秒`);
+      this.hubConfig.statePollingInterval = 300;
+    }
+
+    this.log.info(`使用轮询间隔: ${this.hubConfig.statePollingInterval} 秒`);
     
     // 立即执行第一次查询
     this.log.debug('执行首次场景查询');
     this.fetchScenes();
 
-    const timer = setInterval(() => {
-      // 检查SSH连接状态
-      if (!this.isConnected) {
-        this.log.warn('SSH连接已断开，尝试重新连接');
-        this.connectToHub();
-        return;
-      }
-
+    // 设置定时轮询
+    this.pollTimer = setInterval(() => {
       this.log.debug(`执行定时场景查询 (间隔: ${this.hubConfig!.statePollingInterval} 秒)`);
       this.fetchScenes();
-    }, this.hubConfig!.statePollingInterval * 1000);
+    }, this.hubConfig.statePollingInterval * 1000);
 
     // 确保定时器不会阻止进程退出
-    timer.unref();
+    this.pollTimer.unref();
   }
 
   private getScliPath(): string {
@@ -191,78 +163,79 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   private async executeCommand(command: string): Promise<{ stdout: string; stderr: string }> {
-    const scliPath = this.getScliPath();
-    const fullCommand = `${scliPath} ${command}`;
-    this.log.debug('准备执行命令:', fullCommand);
-
-    if (!this.sshClient) {
-      this.log.error('SSH 客户端未连接，无法执行命令');
-      return { stdout: '', stderr: '' };
-    }
-
-    return new Promise((resolve, reject) => {
-      // 根据主机类型设置不同的环境变量和路径
-      const setupCommands = this.hubConfig!.hostType === 'ProHost'
-        ? [
-          'export PATH="/Users/rpm/Applications/RacePointMedia:$PATH"',
-          'cd /Users/rpm/Applications/RacePointMedia',  // 切换到正确的目录
-        ]
-        : [
-          'export PATH="/usr/local/bin:$PATH"',
-          'cd /usr/local/bin',
-        ];
-
-      // 组合所有命令
-      const wrappedCommand = [...setupCommands, fullCommand].join(' && ');
+    let client: Client | null = null;
+    try {
+      client = await this.createSSHConnection();
       
-      this.log.debug('完整命令:', wrappedCommand);
-      
-      this.sshClient!.exec(wrappedCommand, (err, stream) => {
-        if (err) {
-          this.log.error('执行命令失败:', err);
-          reject(err);
-          return;
-        }
+      const scliPath = this.getScliPath();
+      const fullCommand = `${scliPath} ${command}`;
+      this.log.debug('准备执行命令:', fullCommand);
 
-        let output = '';
-        let errorOutput = '';
+      const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        // 根据主机类型设置不同的环境变量和路径
+        const setupCommands = this.hubConfig!.hostType === 'ProHost'
+          ? [
+            'export PATH="/Users/rpm/Applications/RacePointMedia:$PATH"',
+            'cd /Users/rpm/Applications/RacePointMedia',
+          ]
+          : [
+            'export PATH="/usr/local/bin:$PATH"',
+            'cd /usr/local/bin',
+          ];
 
-        stream.on('data', (data: Buffer) => {
-          const str = data.toString();
-          this.log.debug('收到命令输出:', str);
-          output += str;
-        });
-
-        stream.stderr.on('data', (data: Buffer) => {
-          const str = data.toString();
-          this.log.debug('收到错误输出:', str);
-          errorOutput += str;
-        });
-
-        stream.on('close', (code: number) => {
-          this.log.debug('命令执行完成，退出码:', code);
-          this.log.debug('清理后的输出:', output.trim());
-          this.log.debug('错误输出:', errorOutput || '无错误输出');
-
-          if (code !== 0) {
-            this.log.error(`命令执行失败，退出码: ${code}`);
-            this.log.error(`错误输出: ${errorOutput || '无错误输出'}`);
-            resolve({ stdout: '', stderr: errorOutput });
+        // 组合所有命令
+        const wrappedCommand = [...setupCommands, fullCommand].join(' && ');
+        
+        this.log.debug('完整命令:', wrappedCommand);
+        
+        client!.exec(wrappedCommand, (err, stream) => {
+          if (err) {
+            this.log.error('执行命令失败:', err);
+            reject(err);
             return;
           }
 
-          resolve({ stdout: output.trim(), stderr: errorOutput });
+          let output = '';
+          let errorOutput = '';
+
+          stream.on('data', (data: Buffer) => {
+            const str = data.toString();
+            this.log.debug('收到命令输出:', str);
+            output += str;
+          });
+
+          stream.stderr.on('data', (data: Buffer) => {
+            const str = data.toString();
+            this.log.debug('收到错误输出:', str);
+            errorOutput += str;
+          });
+
+          stream.on('close', (code: number) => {
+            this.log.debug('命令执行完成，退出码:', code);
+            this.log.debug('清理后的输出:', output.trim());
+            this.log.debug('错误输出:', errorOutput || '无错误输出');
+
+            if (code !== 0) {
+              this.log.error(`命令执行失败，退出码: ${code}`);
+              this.log.error(`错误输出: ${errorOutput || '无错误输出'}`);
+              resolve({ stdout: '', stderr: errorOutput });
+              return;
+            }
+
+            resolve({ stdout: output.trim(), stderr: errorOutput });
+          });
         });
       });
-    });
+
+      return result;
+    } finally {
+      if (client) {
+        await this.closeSSHConnection(client);
+      }
+    }
   }
 
   private async fetchScenes(): Promise<SceneInfo[]> {
-    if (!this.isConnected) {
-      this.log.error('SSH 客户端未连接，无法获取场景');
-      return [];
-    }
-
     try {
       this.log.debug('尝试获取场景列表');
       const command = 'getSceneNames';
@@ -279,8 +252,6 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
       return scenes;
     } catch (error) {
       this.log.error('执行场景查询命令时出错:', error);
-      this.isConnected = false;  // 更新连接状态
-      await this.connectToHub();
       return [];
     }
   }
@@ -389,11 +360,6 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   public async activateScene(sceneName: string, sceneId: string, sceneUser: string): Promise<void> {
-    if (!this.sshClient) {
-      this.log.error('SSH 客户端未连接');
-      return;
-    }
-
     try {
       const command = `activateScene '${sceneName}' '${sceneId}' '${sceneUser}'`;
       this.log.debug('执行场景激活命令:', `${this.getScliPath()} ${command}`);
