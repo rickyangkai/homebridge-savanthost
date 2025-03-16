@@ -1,7 +1,7 @@
 import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service } from 'homebridge';
 import { Client } from 'ssh2';
-import { SavantHostPlatformAccessory } from './platformAccessory.js';
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import { SavantHostPlatformAccessory } from './platformAccessory';
+import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 
 interface SceneInfo {
   sceneName: string;

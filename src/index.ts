@@ -1,7 +1,7 @@
 import type { API } from 'homebridge';
 
-import { SavantHostHomebridgePlatform } from './platform.js';
-import { PLATFORM_NAME } from './settings.js';
+import { SavantHostHomebridgePlatform } from './platform';
+import { PLATFORM_NAME } from './settings';
 
 /**
  * This method registers the platform with Homebridge
