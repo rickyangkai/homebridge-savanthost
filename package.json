@@ -5,12 +5,14 @@
   "description": "Savant主机场景控制插件",
   "license": "MIT",
   "keywords": [
-    "homebridge-plugin",
     "savant",
+    "savantsmarthome",
     "scene",
     "SavantHost",
     "control",
-    "smart home"
+    "smart home",
+    "rickyangkai",
+    "SavantChinaGroup"
   ],
   "repository": {
     "type": "git",

@@ -40,7 +40,6 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   private CustomCharacteristics: CustomCharacteristicType = {};
 
   private readonly scenes: Map<string, SceneInfo> = new Map();
-  private sshClient: Client | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private hubConfig: HubConfig | null = null;
 
@@ -165,6 +164,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   private async executeCommand(command: string): Promise<{ stdout: string; stderr: string }> {
     let client: Client | null = null;
     try {
+      this.log.debug('建立新的 SSH 连接');
       client = await this.createSSHConnection();
       
       const scliPath = this.getScliPath();
@@ -230,6 +230,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
       return result;
     } finally {
       if (client) {
+        this.log.debug('命令执行完成，关闭 SSH 连接');
         await this.closeSSHConnection(client);
       }
     }
