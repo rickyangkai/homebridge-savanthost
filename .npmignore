@@ -134,3 +134,8 @@ web_modules/
 .pnp.*
 
 test/
+
+# 授权生成器相关文件（不发布到npm）
+src/auth-generator.ts
+dist/auth-generator.*
+AUTH_README.md
