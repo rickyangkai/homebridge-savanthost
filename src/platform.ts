@@ -2,6 +2,7 @@ import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAcces
 import { Client } from 'ssh2';
 import { SavantHostPlatformAccessory } from './platformAccessory';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
+import { activatePlugin, getAddressCode, isPluginActivated } from './auth';
 
 interface SceneInfo {
   sceneName: string;
@@ -42,6 +43,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   private readonly scenes: Map<string, SceneInfo> = new Map();
   private pollTimer: NodeJS.Timeout | null = null;
   private hubConfig: HubConfig | null = null;
+  private isActivated = false;
 
   constructor(
     public readonly log: Logging,
@@ -74,10 +76,54 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
 
     this.log.debug('初始化平台:', this.config.name);
 
-    this.api.on('didFinishLaunching', () => {
+    this.api.on('didFinishLaunching', async () => {
       this.log.debug('执行 didFinishLaunching 回调');
-      this.startPolling();
+      
+      // 检查插件激活状态
+      await this.checkActivation();
     });
+  }
+
+  // 检查插件激活状态
+  private async checkActivation() {
+    try {
+      // 检查是否已激活
+      this.isActivated = await isPluginActivated(this.log);
+      
+      if (this.isActivated) {
+        this.log.info('插件已激活，开始运行...');
+        this.startPolling();
+        return;
+      }
+      
+      // 获取配置中的授权码
+      const authCode = this.config.authCode as string;
+      
+      if (!authCode) {
+        // 获取地址码并提示用户
+        const addressCode = await getAddressCode(this.log);
+        this.log.warn('插件未激活！请联系开发者获取授权码');
+        this.log.warn(`您的设备地址码: ${addressCode}`);
+        this.log.warn('请在插件配置中填入授权码后重启Homebridge');
+        return;
+      }
+      
+      // 尝试激活插件
+      const activationResult = await activatePlugin(authCode, this.log);
+      
+      if (activationResult) {
+        this.isActivated = true;
+        this.log.info('插件已成功激活，开始运行...');
+        this.startPolling();
+      } else {
+        const addressCode = await getAddressCode(this.log);
+        this.log.error('授权码无效，插件无法启动');
+        this.log.warn(`您的设备地址码: ${addressCode}`);
+        this.log.warn('请确认授权码正确或联系开发者获取新的授权码');
+      }
+    } catch (error) {
+      this.log.error('检查授权状态出错:', error);
+    }
   }
 
   private async createSSHConnection(): Promise<Client> {
@@ -121,6 +167,12 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   private startPolling() {
+    // 如果未激活，不启动
+    if (!this.isActivated) {
+      this.log.warn('插件未激活，无法启动轮询');
+      return;
+    }
+    
     if (!this.config.hubs?.[0]) {
       this.log.error('未找到有效的主机配置');
       return;

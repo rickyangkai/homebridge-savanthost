@@ -143,3 +143,8 @@ dist
 # Test configuration
 test/hbConfig/accessories/
 test/hbConfig/persist/
+
+# 授权生成器相关文件
+src/auth-generator.ts
+dist/auth-generator.js
+AUTH_README.md
