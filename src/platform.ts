@@ -11,7 +11,7 @@ interface SceneInfo {
 }
 
 interface HubConfig {
-  hostType: 'SmartHost' | 'ProHost';
+  hostType: 'SmartHost' | 'ProHost' | 'ProHost Over 11.0.5';
   ip: string;
   port: number;
   username: string;
@@ -208,9 +208,13 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   private getScliPath(): string {
-    return this.hubConfig!.hostType === 'ProHost' 
-      ? '/Users/rpm/Applications/RacePointMedia/sclibridge'
-      : '/usr/local/bin/sclibridge';
+    if (this.hubConfig!.hostType === 'ProHost') {
+      return '/Users/rpm/Applications/RacePointMedia/sclibridge';
+    } else if (this.hubConfig!.hostType === 'ProHost Over 11.0.5') {
+      return '/Users/Shared/Savant/Applications/RacePointMedia/sclibridge';
+    } else {
+      return '/usr/local/bin/sclibridge';
+    }
   }
 
   private async executeCommand(command: string): Promise<{ stdout: string; stderr: string }> {
@@ -225,16 +229,24 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
 
       const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
         // 根据主机类型设置不同的环境变量和路径
-        const setupCommands = this.hubConfig!.hostType === 'ProHost'
-          ? [
+        let setupCommands: string[];
+        if (this.hubConfig!.hostType === 'ProHost') {
+          setupCommands = [
             'export PATH="/Users/rpm/Applications/RacePointMedia:$PATH"',
             'cd /Users/rpm/Applications/RacePointMedia',
-          ]
-          : [
+          ];
+        } else if (this.hubConfig!.hostType === 'ProHost Over 11.0.5') {
+          setupCommands = [
+            'export PATH="/Users/Shared/Savant/Applications/RacePointMedia:$PATH"',
+            'cd /Users/Shared/Savant/Applications/RacePointMedia',
+          ];
+        } else {
+          setupCommands = [
             'export PATH="/usr/local/bin:$PATH"',
             'export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"',
             'cd /usr/local/bin',
           ];
+        }
 
         // 组合所有命令
         const wrappedCommand = [...setupCommands, fullCommand].join(' && ');

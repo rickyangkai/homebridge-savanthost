@@ -23,7 +23,7 @@
                           "title": "Savant主机类型",
                           "type": "string",
                           "required": true,
-                          "enum": ["SmartHost", "ProHost"]
+                          "enum": ["SmartHost", "ProHost", "ProHost Over 11.0.5"]
                       },
                       "ip": {
                           "title": "主机IP地址",
