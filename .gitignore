@@ -148,3 +148,7 @@ test/hbConfig/persist/
 src/auth-generator.ts
 dist/auth-generator.js
 AUTH_README.md
+
+# 排除敏感脚本和辅助工具
+*.command
+savant_scene_controller.py
