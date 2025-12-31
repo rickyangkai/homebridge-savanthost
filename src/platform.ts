@@ -285,6 +285,27 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     }
   }
 
+  async activateScene(sceneName: string, sceneId: string) {
+    if (!this.savantHost) {
+      this.log.error('无法激活场景：未连接到主机');
+      return;
+    }
+
+    try {
+      const url = `http://${this.savantHost.ip}:${this.savantHost.port}/config/v1/scenes/${sceneId}/activate`;
+      this.log.info(`正在激活场景: ${sceneName} (${sceneId})`);
+      
+      await axios.post(url, {}, {
+        timeout: 5000,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      });
+      
+      this.log.info(`场景激活成功: ${sceneName}`);
+    } catch (error) {
+      this.log.error('激活场景失败:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info('加载缓存的配件:', accessory.displayName);
     this.accessories.set(accessory.UUID, accessory);
