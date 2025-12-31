@@ -9,9 +9,8 @@
       "properties": {
           "authCode": {
               "title": "授权码",
-              "description": "请输入插件授权码，如果没有授权码，请联系开发者获取",
-              "type": "string",
-              "required": true
+              "description": "插件安装成功后请在插件日志中查看授权码，请输入插件授权码，如果没有授权码，请联系开发者获取",
+              "type": "string"
           },
           "statePollingInterval": {
               "title": "场景更新轮询间隔",

@@ -5,13 +5,13 @@
 
 ## 功能特点
 
-- 通过 SSH 连接到 Savant Host
-- 自动发现和同步场景
+- 自动发现 Savant Host (mDNS/Bonjour)
+- 自动同步场景
 - 支持场景激活
 - 自动重连机制
 - 可配置的状态轮询间隔
-- 场景名称建议不含打开或者关闭字符，Sir会识别出错，
-- 此插件在Docker中已经测试工作正常，M芯片的MAC正常，未在linux系统中长时间测试。
+- 场景名称建议不含打开或者关闭字符，Sir会识别出错
+- 此插件在Docker中已经测试工作正常，M芯片的MAC正常，未在linux系统中长时间测试
 
 ## 安装
 
@@ -30,11 +30,6 @@ npm install -g homebridge-savanthost
 ## 配置参数说明
 
 - `authCode`: 插件授权码
-- `hostType`: 主机类型 (SmartHost、ProHost 或 SuperProhost)
-- `ip`: Savant Host 的 IP 地址
-- `port`: SSH 端口号
-- `username`: SSH 用户名
-- `password`: SSH 密码
 - `statePollingInterval`: 状态轮询间隔（秒），范围 60-3600，默认 300
 
 ## 许可证

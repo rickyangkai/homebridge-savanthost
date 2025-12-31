@@ -249,33 +249,24 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   private updateAccessories(scenes: SceneInfo[]) {
-    this.log.debug('开始更新配件列表');
-    this.log.debug('当前场景数量:', scenes.length);
-    
-    // 重置已发现的配件列表
-    this.discoveredCacheUUIDs = [];
-    this.scenes.clear(); // 清空现有场景列表
+    const activeSceneIds = new Set<string>();
 
     for (const scene of scenes) {
-      this.log.debug('处理场景:', scene.sceneName);
-      // UUID 仅根据 sceneId 生成，与 IP 无关
-      // 这保证了即使主机 IP 变更，只要 sceneId 不变，配件就不会重复
+      // 使用 UUID 库生成基于 sceneId 的 UUID
       const uuid = this.api.hap.uuid.generate(scene.sceneId);
-      
-      // 添加到发现列表
-      this.discoveredCacheUUIDs.push(uuid);
-      this.scenes.set(scene.sceneName, scene);
+      activeSceneIds.add(uuid);
 
       const existingAccessory = this.accessories.get(uuid);
+
       if (existingAccessory) {
-        this.log.debug('更新现有配件:', scene.sceneName);
-        
+        this.log.debug('恢复现有配件:', existingAccessory.displayName);
+        // 更新场景名称
         existingAccessory.context.scene = scene;
-        existingAccessory.displayName = scene.sceneName; // 确保显示名称同步更新
+        // 确保缓存的配件也更新
         this.api.updatePlatformAccessories([existingAccessory]);
         new SavantHostPlatformAccessory(this, existingAccessory);
       } else {
-        this.log.debug('创建新配件:', scene.sceneName);
+        this.log.info('添加新配件:', scene.sceneName);
         const accessory = new this.api.platformAccessory(scene.sceneName, uuid);
         accessory.context.scene = scene;
         new SavantHostPlatformAccessory(this, accessory);
@@ -284,60 +275,18 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
       }
     }
 
-    // 移除不存在的配件
-    // 只有在本次 fetchScenes 成功返回了列表（包含空列表）时才会执行到这里
-    // 所以这里的移除是安全的，代表主机上确实没有这些场景了
-    const accessoriesToRemove: PlatformAccessory[] = [];
+    // 移除已删除的场景
     for (const [uuid, accessory] of this.accessories) {
-      if (!this.discoveredCacheUUIDs.includes(uuid)) {
-        this.log.info('从缓存中移除配件:', accessory.displayName);
-        accessoriesToRemove.push(accessory);
+      if (!activeSceneIds.has(uuid)) {
+        this.log.info('移除已删除的配件:', accessory.displayName);
+        this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         this.accessories.delete(uuid);
       }
     }
-
-    if (accessoriesToRemove.length > 0) {
-      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
-    }
-
-    this.log.debug('配件更新完成');
   }
 
-  /**
-   * This function is invoked when homebridge restores cached accessories from disk at startup.
-   */
   configureAccessory(accessory: PlatformAccessory) {
-    this.log.info('从缓存加载配件:', accessory.displayName);
+    this.log.info('加载缓存的配件:', accessory.displayName);
     this.accessories.set(accessory.UUID, accessory);
-  }
-
-  public async activateScene(sceneName: string, sceneId: string): Promise<void> {
-    if (!this.savantHost) {
-      // 尝试重新发现
-      await this.discoverHost();
-    }
-    
-    if (!this.savantHost) {
-      this.log.error('无法激活场景：未连接到主机');
-      return;
-    }
-
-    try {
-      const url = `http://${this.savantHost.ip}:${this.savantHost.port}/control/v1/scenes/${sceneId}/apply`;
-      this.log.info(`激活场景: ${sceneName}`);
-      this.log.debug(`POST ${url}`);
-      
-      await axios.post(url, {}, {
-        timeout: 5000,
-        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      });
-      
-      this.log.info('场景激活请求成功');
-    } catch (error) {
-      this.log.error('场景激活失败:', error instanceof Error ? error.message : String(error));
-      
-      // 如果激活失败，也可能是 IP 变了，清除缓存
-      this.savantHost = null;
-    }
   }
 }
