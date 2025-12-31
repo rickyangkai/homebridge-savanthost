@@ -9,49 +9,13 @@
       "properties": {
           "authCode": {
               "title": "授权码",
-              "description": "插件安装成功后请在插件日志中查看授权码，请输入插件授权码，如果没有授权码，请联系开发者获取",
-              "type": "string"
-          },
-          "hubs": {
-              "type": "array",
-              "title": "Savant智能主机插件",
-              "description": "请填写主机IP地址、类型、端口、用户名、密码",
-              "items": {
-                  "type": "object",
-                  "properties": {
-                      "hostType": {
-                          "title": "Savant主机类型",
-                          "type": "string",
-                          "required": true,
-                          "enum": ["SmartHost", "ProHost"]
-                      },
-                      "ip": {
-                          "title": "主机IP地址",
-                          "type": "string",
-                          "required": true
-                      },
-                      "port": {
-                          "title": "主机端口",
-                          "type": "integer",
-                          "default": 22
-                      },
-                      "username": {
-                          "title": "主机用户名",
-                          "type": "string",
-                          "required": true
-                      },
-                      "password": {
-                          "title": "主机密码",
-                          "type": "string",
-                          "required": true
-                      }
-                  },
-                  "required": ["ip", "hostType", "username", "password"]
-              }
+              "description": "请输入插件授权码，如果没有授权码，请联系开发者获取",
+              "type": "string",
+              "required": true
           },
           "statePollingInterval": {
-              "title": "主机状态轮询间隔",
-              "description": "主机状态轮询间隔时间",
+              "title": "场景更新轮询间隔",
+              "description": "定期检查新场景和同步状态的时间间隔 (秒)，默认 300 秒",
               "default": 300,
               "type": "integer",
               "minimum": 60,

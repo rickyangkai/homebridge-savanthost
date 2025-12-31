@@ -30,7 +30,7 @@ npm install -g homebridge-savanthost
 ## 配置参数说明
 
 - `authCode`: 插件授权码
-- `hostType`: 主机类型 (SmartHost 或 ProHost)
+- `hostType`: 主机类型 (SmartHost、ProHost 或 SuperProhost)
 - `ip`: Savant Host 的 IP 地址
 - `port`: SSH 端口号
 - `username`: SSH 用户名

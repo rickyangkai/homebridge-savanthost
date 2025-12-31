@@ -28,7 +28,7 @@ export class SavantHostPlatformAccessory {
         if (value) {
           const scene = this.accessory.context.scene;
           this.platform.log.debug('激活场景:', scene.sceneName);
-          await this.platform.activateScene(scene.sceneName, scene.sceneId, scene.sceneUser);
+          await this.platform.activateScene(scene.sceneName, scene.sceneId);
           // 延迟100ms后自动关闭开关
           setTimeout(() => {
             this.switchService.updateCharacteristic(this.platform.Characteristic.On, false);

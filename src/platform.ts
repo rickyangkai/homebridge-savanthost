@@ -1,5 +1,7 @@
 import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service } from 'homebridge';
-import { Client } from 'ssh2';
+import axios from 'axios';
+import { Bonjour } from 'bonjour-service';
+import https from 'https';
 import { SavantHostPlatformAccessory } from './platformAccessory';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { activatePlugin, getAddressCode, isPluginActivated } from './auth';
@@ -7,16 +9,6 @@ import { activatePlugin, getAddressCode, isPluginActivated } from './auth';
 interface SceneInfo {
   sceneName: string;
   sceneId: string;
-  sceneUser: string;
-}
-
-interface HubConfig {
-  hostType: 'SmartHost' | 'ProHost';
-  ip: string;
-  port: number;
-  username: string;
-  password: string;
-  statePollingInterval: number;
 }
 
 // 声明 EveHomeKitTypes 类型
@@ -42,8 +34,10 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
 
   private readonly scenes: Map<string, SceneInfo> = new Map();
   private pollTimer: NodeJS.Timeout | null = null;
-  private hubConfig: HubConfig | null = null;
   private isActivated = false;
+
+  private bonjour: Bonjour;
+  private savantHost: { ip: string; port: number; hostname: string } | null = null;
 
   constructor(
     public readonly log: Logging,
@@ -52,6 +46,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   ) {
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
+    this.bonjour = new Bonjour();
 
     // 初始化为空对象，确保不会出现 undefined
     this.CustomServices = {};
@@ -126,46 +121,6 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     }
   }
 
-  private async createSSHConnection(): Promise<Client> {
-    return new Promise((resolve, reject) => {
-      const client = new Client();
-      
-      client
-        .on('ready', () => {
-          this.log.info('SSH 连接已建立');
-          resolve(client);
-        })
-        .on('error', (err) => {
-          this.log.error('SSH 连接错误:', err);
-          reject(err);
-        })
-        .connect({
-          host: this.hubConfig!.ip,
-          port: this.hubConfig!.port,
-          username: this.hubConfig!.username,
-          password: this.hubConfig!.password,
-          algorithms: {
-            serverHostKey: ['ssh-rsa', 'ecdsa-sha2-nistp256', 'ssh-ed25519'],
-          },
-          hostVerifier: () => true,
-          readyTimeout: 30000,            // 连接超时时间30秒
-          debug: (message: string) => {
-            this.log.debug('SSH Debug:', message);
-          },
-        });
-    });
-  }
-
-  private async closeSSHConnection(client: Client): Promise<void> {
-    return new Promise((resolve) => {
-      client.on('close', () => {
-        this.log.debug('SSH 连接已关闭');
-        resolve();
-      });
-      client.end();
-    });
-  }
-
   private startPolling() {
     // 如果未激活，不启动
     if (!this.isActivated) {
@@ -173,161 +128,124 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
       return;
     }
     
-    if (!this.config.hubs?.[0]) {
-      this.log.error('未找到有效的主机配置');
-      return;
-    }
-
-    this.hubConfig = this.config.hubs[0] as HubConfig;
-    
-    // 确保设置了轮询间隔，如果未设置则使用默认值
-    if (!this.hubConfig.statePollingInterval) {
-      this.hubConfig.statePollingInterval = this.config.statePollingInterval || 300;
-    }
+    // 确保设置了轮询间隔
+    let interval = this.config.statePollingInterval || 300;
 
     // 验证轮询间隔
-    if (this.hubConfig.statePollingInterval < 60 || this.hubConfig.statePollingInterval > 3600) {
-      this.log.warn(`轮询间隔 ${this.hubConfig.statePollingInterval} 超出范围，将使用默认值 300 秒`);
-      this.hubConfig.statePollingInterval = 300;
+    if (interval < 60 || interval > 3600) {
+      this.log.warn(`轮询间隔 ${interval} 超出范围，将使用默认值 300 秒`);
+      interval = 300;
     }
 
-    this.log.info(`使用轮询间隔: ${this.hubConfig.statePollingInterval} 秒`);
+    this.log.info(`使用轮询间隔: ${interval} 秒`);
     
-    // 立即执行第一次查询
-    this.log.debug('执行首次场景查询');
-    this.fetchScenes();
+    // 启动发现和同步
+    this.discoverAndSync();
 
     // 设置定时轮询
     this.pollTimer = setInterval(() => {
-      this.log.debug(`执行定时场景查询 (间隔: ${this.hubConfig!.statePollingInterval} 秒)`);
+      this.log.debug(`执行定时场景查询 (间隔: ${interval} 秒)`);
       this.fetchScenes();
-    }, this.hubConfig.statePollingInterval * 1000);
+    }, interval * 1000);
 
     // 确保定时器不会阻止进程退出
     this.pollTimer.unref();
   }
 
-  private getScliPath(): string {
-    return this.hubConfig!.hostType === 'ProHost' 
-      ? '/Users/rpm/Applications/RacePointMedia/sclibridge'
-      : '/usr/local/bin/sclibridge';
+  private async discoverAndSync() {
+    await this.discoverHost();
+    if (this.savantHost) {
+      await this.fetchScenes();
+    }
   }
 
-  private async executeCommand(command: string): Promise<{ stdout: string; stderr: string }> {
-    let client: Client | null = null;
-    try {
-      this.log.debug('建立新的 SSH 连接');
-      client = await this.createSSHConnection();
+  private async discoverHost(): Promise<void> {
+    this.log.info('正在搜索 Savant 主机 (OpenAPI)...');
+    return new Promise((resolve) => {
+      const browser = this.bonjour.find({ type: 'soapi_sdo', protocol: 'tcp' });
       
-      const scliPath = this.getScliPath();
-      const fullCommand = `${scliPath} ${command}`;
-      this.log.debug('准备执行命令:', fullCommand);
+      let resolved = false;
+      
+      // 设置发现超时
+      setTimeout(() => {
+        if (!resolved) {
+          this.log.warn('搜索主机超时，未找到 Savant 主机。将在下一次轮询时重试。');
+          browser.stop();
+          resolve();
+        }
+      }, 5000);
 
-      const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-        // 根据主机类型设置不同的环境变量和路径
-        const setupCommands = this.hubConfig!.hostType === 'ProHost'
-          ? [
-            'export PATH="/Users/rpm/Applications/RacePointMedia:$PATH"',
-            'cd /Users/rpm/Applications/RacePointMedia',
-          ]
-          : [
-            'export PATH="/usr/local/bin:$PATH"',
-            'export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"',
-            'cd /usr/local/bin',
-          ];
-
-        // 组合所有命令
-        const wrappedCommand = [...setupCommands, fullCommand].join(' && ');
+      browser.on('up', (service) => {
+        this.log.debug(`发现服务: ${service.name} (${service.type}) IP:${service.addresses} Port:${service.port}`);
         
-        this.log.debug('完整命令:', wrappedCommand);
-        
-        client!.exec(wrappedCommand, (err, stream) => {
-          if (err) {
-            this.log.error('执行命令失败:', err);
-            reject(err);
-            return;
-          }
-
-          let output = '';
-          let errorOutput = '';
-
-          stream.on('data', (data: Buffer) => {
-            const str = data.toString();
-            this.log.debug('收到命令输出:', str);
-            output += str;
-          });
-
-          stream.stderr.on('data', (data: Buffer) => {
-            const str = data.toString();
-            this.log.debug('收到错误输出:', str);
-            errorOutput += str;
-          });
-
-          stream.on('close', (code: number) => {
-            this.log.debug('命令执行完成，退出码:', code);
-            this.log.debug('清理后的输出:', output.trim());
-            this.log.debug('错误输出:', errorOutput || '无错误输出');
-
-            if (code !== 0) {
-              this.log.error(`命令执行失败，退出码: ${code}`);
-              this.log.error(`错误输出: ${errorOutput || '无错误输出'}`);
-              resolve({ stdout: '', stderr: errorOutput });
-              return;
-            }
-
-            resolve({ stdout: output.trim(), stderr: errorOutput });
-          });
-        });
+        // 自动使用找到的第一个服务
+        if (service.addresses && service.addresses.length > 0) {
+          // 优先使用 IPv4
+          const ip = service.addresses.find((addr: string) => addr.includes('.')) || service.addresses[0];
+          this.log.info(`找到主机: ${service.name} (${ip}:${service.port})`);
+          this.savantHost = {
+            ip: ip,
+            port: service.port,
+            hostname: service.host || service.name,
+          };
+          resolved = true;
+          browser.stop();
+          resolve();
+        }
       });
-
-      return result;
-    } finally {
-      if (client) {
-        this.log.debug('命令执行完成，关闭 SSH 连接');
-        await this.closeSSHConnection(client);
-      }
-    }
+    });
   }
 
   private async fetchScenes(): Promise<SceneInfo[]> {
+    // 如果没有主机信息，尝试重新发现
+    if (!this.savantHost) {
+      await this.discoverHost();
+    }
+    
+    // 如果仍然没有主机信息，返回空
+    if (!this.savantHost) {
+      this.log.error('无法获取场景：未连接到主机 (请检查主机是否在线以及是否开启了 OpenAPI)');
+      return [];
+    }
+
     try {
-      this.log.debug('尝试获取场景列表');
-      const command = 'getSceneNames';
-      this.log.debug('执行场景查询命令:', `${this.getScliPath()} ${command}`);
+      const url = `http://${this.savantHost.ip}:${this.savantHost.port}/config/v1/scenes`;
+      this.log.debug('获取场景:', url);
       
-      const { stdout } = await this.executeCommand(command);
-      this.log.debug('收到原始场景数据:', stdout);
-      const scenes = this.parseScenes(stdout);
-      this.log.info(`成功解析 ${scenes.length} 个场景`);
-      scenes.forEach(scene => {
-        this.log.debug(`场景信息: 名称=${scene.sceneName}, ID=${scene.sceneId}, 用户=${scene.sceneUser}`);
+      const response = await axios.get(url, {
+        timeout: 5000,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       });
+
+      const data = response.data;
+      if (!Array.isArray(data)) {
+        this.log.warn('场景数据格式错误: 期望数组');
+        return [];
+      }
+
+      // 映射并过滤场景
+      const scenes: SceneInfo[] = data.map((s: any) => ({
+        sceneName: s.alias || s.name || 'Unknown',
+        sceneId: s.id,
+      })).filter(s => s.sceneId); // 确保有 ID
+
+      this.log.info(`成功获取 ${scenes.length} 个场景`);
+      
+      // 只有成功获取到场景列表（即使为空列表，只要是正常的空）才更新配件
+      // 这样可以避免因连接错误导致配件被错误删除
       this.updateAccessories(scenes);
       return scenes;
+
     } catch (error) {
-      this.log.error('执行场景查询命令时出错:', error);
+      this.log.error('获取场景失败:', error instanceof Error ? error.message : String(error));
+      
+      // 如果发生错误，可能是 IP 变了或服务不可用
+      // 清除当前主机信息，以便下次轮询时重新发现
+      this.log.info('清除当前主机缓存，将在下次轮询时重新搜索主机...');
+      this.savantHost = null;
+      
       return [];
     }
-  }
-
-  private parseScenes(output: string): SceneInfo[] {
-    if (!output) {
-      this.log.warn('没有收到场景数据');
-      return [];
-    }
-
-    const lines = output.split('\n').filter(line => line.trim());
-    this.log.debug('场景数据行数:', lines.length);
-
-    return lines.map(line => {
-      this.log.debug('处理场景数据行:', line);
-      const [sceneName, sceneId, sceneUser] = line.split(',').map(item => item.trim());
-      if (!sceneName || !sceneId || !sceneUser) {
-        this.log.warn('无效的场景数据行:', line);
-        return null;
-      }
-      return { sceneName, sceneId, sceneUser };
-    }).filter((scene): scene is SceneInfo => scene !== null);
   }
 
   private updateAccessories(scenes: SceneInfo[]) {
@@ -338,27 +256,12 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     this.discoveredCacheUUIDs = [];
     this.scenes.clear(); // 清空现有场景列表
 
-    // 创建一个 Map 来跟踪场景 ID 和对应的用户列表
-    const sceneIdUsers = new Map<string, Set<string>>();
-
-    // 首先收集所有相同 ID 的场景的用户
-    for (const scene of scenes) {
-      const users = sceneIdUsers.get(scene.sceneId) || new Set<string>();
-      users.add(scene.sceneUser);
-      sceneIdUsers.set(scene.sceneId, users);
-    }
-
     for (const scene of scenes) {
       this.log.debug('处理场景:', scene.sceneName);
+      // UUID 仅根据 sceneId 生成，与 IP 无关
+      // 这保证了即使主机 IP 变更，只要 sceneId 不变，配件就不会重复
       const uuid = this.api.hap.uuid.generate(scene.sceneId);
-      this.log.debug('场景UUID:', uuid);
       
-      // 获取此场景 ID 的所有用户
-      const users = sceneIdUsers.get(scene.sceneId);
-      if (users && users.size > 1) {
-        this.log.info(`场景 "${scene.sceneName}" (ID: ${scene.sceneId}) 有多个用户: ${Array.from(users).join(', ')}`);
-      }
-
       // 添加到发现列表
       this.discoveredCacheUUIDs.push(uuid);
       this.scenes.set(scene.sceneName, scene);
@@ -367,12 +270,8 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
       if (existingAccessory) {
         this.log.debug('更新现有配件:', scene.sceneName);
         
-        // 检查是否需要更新用户
-        if (existingAccessory.context.scene.sceneUser !== scene.sceneUser) {
-          this.log.info(`更新场景 "${scene.sceneName}" 的用户从 "${existingAccessory.context.scene.sceneUser}" 到 "${scene.sceneUser}"`);
-        }
-        
         existingAccessory.context.scene = scene;
+        existingAccessory.displayName = scene.sceneName; // 确保显示名称同步更新
         this.api.updatePlatformAccessories([existingAccessory]);
         new SavantHostPlatformAccessory(this, existingAccessory);
       } else {
@@ -386,6 +285,8 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     }
 
     // 移除不存在的配件
+    // 只有在本次 fetchScenes 成功返回了列表（包含空列表）时才会执行到这里
+    // 所以这里的移除是安全的，代表主机上确实没有这些场景了
     const accessoriesToRemove: PlatformAccessory[] = [];
     for (const [uuid, accessory] of this.accessories) {
       if (!this.discoveredCacheUUIDs.includes(uuid)) {
@@ -400,28 +301,43 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     }
 
     this.log.debug('配件更新完成');
-    this.log.debug('当前配件数量:', this.accessories.size);
-    this.log.debug('当前场景数量:', this.scenes.size);
   }
 
   /**
    * This function is invoked when homebridge restores cached accessories from disk at startup.
-   * It should be used to set up event handlers for characteristics and update respective values.
    */
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info('从缓存加载配件:', accessory.displayName);
     this.accessories.set(accessory.UUID, accessory);
   }
 
-  public async activateScene(sceneName: string, sceneId: string, sceneUser: string): Promise<void> {
+  public async activateScene(sceneName: string, sceneId: string): Promise<void> {
+    if (!this.savantHost) {
+      // 尝试重新发现
+      await this.discoverHost();
+    }
+    
+    if (!this.savantHost) {
+      this.log.error('无法激活场景：未连接到主机');
+      return;
+    }
+
     try {
-      const command = `activateScene '${sceneName}' '${sceneId}' '${sceneUser}'`;
-      this.log.debug('执行场景激活命令:', `${this.getScliPath()} ${command}`);
+      const url = `http://${this.savantHost.ip}:${this.savantHost.port}/control/v1/scenes/${sceneId}/apply`;
+      this.log.info(`激活场景: ${sceneName}`);
+      this.log.debug(`POST ${url}`);
       
-      const { stdout } = await this.executeCommand(command);
-      this.log.debug('场景激活结果:', stdout);
+      await axios.post(url, {}, {
+        timeout: 5000,
+        httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      });
+      
+      this.log.info('场景激活请求成功');
     } catch (error) {
-      this.log.error('执行场景激活命令时出错:', error);
+      this.log.error('场景激活失败:', error instanceof Error ? error.message : String(error));
+      
+      // 如果激活失败，也可能是 IP 变了，清除缓存
+      this.savantHost = null;
     }
   }
 }
