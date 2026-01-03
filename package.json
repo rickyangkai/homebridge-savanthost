@@ -1,7 +1,11 @@
 {
   "name": "homebridge-savanthost",
   "displayName": "Homebridge SavantHost",
-  "version": "1.4.1",
+<<<<<<< HEAD
+  "version": "1.4.0",
+=======
+  "version": "1.3.2",
+>>>>>>> 588db647a09722809ed37fae38cd4bdb27182518
   "description": "Savant主机场景控制插件",
   "license": "MIT",
   "keywords": [
