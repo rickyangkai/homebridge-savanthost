@@ -55,7 +55,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     // 使用异步 IIFE 来处理动态导入
     (async () => {
       try {
-        const { EveHomeKitTypes } = await import('homebridge-lib/lib/EveHomeKitTypes.js');
+        const { EveHomeKitTypes } = await import('homebridge-lib/EveHomeKitTypes');
         if (EveHomeKitTypes) {
           const eve = new EveHomeKitTypes(this.api);
           this.CustomServices = eve.Services as CustomServiceType;
