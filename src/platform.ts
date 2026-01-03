@@ -153,6 +153,9 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   private async discoverAndSync() {
+    if (!this.isActivated) {
+      return;
+    }
     await this.discoverHost();
     if (this.savantHost) {
       await this.fetchScenes();
@@ -160,6 +163,9 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
   }
 
   private async discoverHost(): Promise<void> {
+    if (!this.isActivated) {
+      return;
+    }
     this.log.info('正在搜索 Savant 主机 (OpenAPI)...');
     return new Promise((resolve) => {
       const browser = this.bonjour.find({ type: 'soapi_sdo', protocol: 'tcp' });
@@ -292,7 +298,7 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     }
 
     try {
-      const url = `http://${this.savantHost.ip}:${this.savantHost.port}/config/v1/scenes/${sceneId}/activate`;
+      const url = `http://${this.savantHost.ip}:${this.savantHost.port}/control/v1/scenes/${sceneId}/apply`;
       this.log.info(`正在激活场景: ${sceneName} (${sceneId})`);
       
       await axios.post(url, {}, {

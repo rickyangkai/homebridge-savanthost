@@ -1,0 +1,35 @@
+[
+  {
+    "ip": "192.168.6.3",
+    "hostname": "sav-a477f3059ffc0000.local.",
+    "api_port": 3060,
+    "details": {
+      "uid": "a477f3059ffc0000",
+      "system_name": "Unconfigured",
+      "model": "Macmini9,1",
+      "software_version": "11.0.5-cbeta1:733"
+    },
+    "scenes": [
+      {
+        "name": "Breakfast",
+        "id": "E3CE5D21-62C6-469B-B89F-54296D9D9917"
+      },
+      {
+        "name": "\u4f60\u597d",
+        "id": "77B82361-DF7C-41B0-B7A4-378A76BD0FCD"
+      },
+      {
+        "name": "caomima",
+        "id": "52F8BC9C-0C10-46CE-96E6-7D5E31405564"
+      },
+      {
+        "name": "\u56db\u767e",
+        "id": "BFD8EEC6-9274-4F92-93F2-F10FAFD4D8CC"
+      },
+      {
+        "name": "Sunset",
+        "id": "4524A759-C62C-45E9-8C70-14EC218BEBD6"
+      }
+    ]
+  }
+]
