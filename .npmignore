@@ -146,3 +146,4 @@ savant_scene_controller.py
 savant_hosts_cache.json
 publish.sh
 .trae/
+.custom_components/

@@ -1,0 +1,15 @@
+{
+  "domain": "savanthost",
+  "name": "SavantHost",
+  "codeowners": ["@rickyangkai"],
+  "config_flow": true,
+  "documentation": "https://github.com/rickyangkai/homebridge-savanthost",
+  "iot_class": "local_polling",
+  "version": "1.0.0",
+  "requirements": [],
+  "zeroconf": [
+    {
+      "type": "_soapi_sdo._tcp.local."
+    }
+  ]
+}
