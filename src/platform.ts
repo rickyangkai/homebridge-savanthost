@@ -2,6 +2,8 @@ import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAcces
 import axios from 'axios';
 import { Bonjour } from 'bonjour-service';
 import https from 'https';
+import net from 'net';
+import os from 'os';
 import { SavantHostPlatformAccessory } from './platformAccessory';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { activatePlugin, getAddressCode, isPluginActivated } from './auth';
@@ -168,12 +170,13 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
     }
     this.log.info('正在搜索 Savant 主机 (OpenAPI)...');
     return new Promise((resolve) => {
-      const browser = this.bonjour.find({ type: 'soapi_sdo', protocol: 'tcp' });
-      
       let resolved = false;
       
+      // Bonjour 搜索
+      const browser = this.bonjour.find({ type: 'soapi_sdo', protocol: 'tcp' });
+      
       // 设置发现超时
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         if (!resolved) {
           this.log.warn('搜索主机超时，未找到 Savant 主机。将在下一次轮询时重试。');
           browser.stop();
@@ -181,11 +184,11 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
         }
       }, 5000);
 
+      // Bonjour 服务发现处理
       browser.on('up', (service) => {
         this.log.debug(`发现服务: ${service.name} (${service.type}) IP:${service.addresses} Port:${service.port}`);
         
-        // 自动使用找到的第一个服务
-        if (service.addresses && service.addresses.length > 0) {
+        if (service.addresses && service.addresses.length > 0 && !resolved) {
           // 优先使用 IPv4
           const ip = service.addresses.find((addr: string) => addr.includes('.')) || service.addresses[0];
           this.log.info(`找到主机: ${service.name} (${ip}:${service.port})`);
@@ -195,10 +198,106 @@ export class SavantHostHomebridgePlatform implements DynamicPlatformPlugin {
             hostname: service.host || service.name,
           };
           resolved = true;
+          clearTimeout(timeout);
           browser.stop();
           resolve();
         }
       });
+      
+      // 并行执行 3060 端口扫描
+      this.scanForPort3060().then((foundIp) => {
+        if (foundIp && !resolved) {
+          this.log.info(`通过 3060 端口找到 Savant 主机: ${foundIp}:3060`);
+          this.savantHost = {
+            ip: foundIp,
+            port: 3060,
+            hostname: `Savant-Host-${foundIp.replace(/\./g, '-')}`,
+          };
+          resolved = true;
+          clearTimeout(timeout);
+          browser.stop();
+          resolve();
+        }
+      });
+    });
+  }
+
+  // 扫描局域网内开放 3060 端口的设备
+  private async scanForPort3060(): Promise<string | null> {
+    try {
+      // 获取本地网络接口
+      const interfaces = os.networkInterfaces();
+      const localIps: string[] = [];
+      
+      // 收集所有本地 IPv4 地址
+      for (const iface of Object.values(interfaces)) {
+        for (const addr of iface || []) {
+          if (addr.family === 'IPv4' && !addr.internal) {
+            localIps.push(addr.address);
+          }
+        }
+      }
+      
+      this.log.debug(`本地 IP 地址: ${localIps.join(', ')}`);
+      
+      // 生成要扫描的 IP 范围
+      const ipRanges: string[] = [];
+      for (const ip of localIps) {
+        const parts = ip.split('.');
+        if (parts.length === 4) {
+          const networkPrefix = `${parts[0]}.${parts[1]}.${parts[2]}.`;
+          ipRanges.push(networkPrefix);
+        }
+      }
+      
+      // 去重 IP 范围
+      const uniqueIpRanges = [...new Set(ipRanges)];
+      this.log.debug(`扫描 IP 范围: ${uniqueIpRanges.join(', ')}`);
+      
+      // 扫描每个 IP 范围
+      for (const networkPrefix of uniqueIpRanges) {
+        // 扫描 1-254 网段
+        for (let i = 1; i <= 254; i++) {
+          const ip = `${networkPrefix}${i}`;
+          
+          // 测试 3060 端口
+          const isOpen = await this.isPortOpen(ip, 3060, 500);
+          if (isOpen) {
+            return ip;
+          }
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      this.log.error('3060 端口扫描错误:', error);
+      return null;
+    }
+  }
+
+  // 检查端口是否开放
+  private async isPortOpen(ip: string, port: number, timeout: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      
+      socket.setTimeout(timeout);
+      
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      
+      socket.on('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      
+      socket.connect(port, ip);
     });
   }
 

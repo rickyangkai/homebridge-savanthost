@@ -156,3 +156,4 @@ savant_hosts_cache.json
 publish.sh
 .trae/
 .custom_components/
+savant_hosts_cache.json
